@@ -1,0 +1,107 @@
+# Every environment-specific value is read from an environment variable. Defaults below are for a
+# developer machine running `docker compose up postgres redis kafka`; credentials have no default.
+spring:
+  application:
+    name: stocklock
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/stocklock}
+    username: ${DB_USERNAME:stocklock}
+    password: ${DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      connection-timeout: 10000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      # Redis is an optimisation; fail fast so an outage costs milliseconds, not seconds, per request.
+      timeout: 250ms
+      connect-timeout: 250ms
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+        # Bound how long a send can block when the broker is unreachable (default is 60s).
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
+    consumer:
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    listener:
+      ack-mode: record
+  task:
+    scheduling:
+      pool:
+        size: 3
+      thread-name-prefix: stocklock-job-
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+stocklock:
+  reservation:
+    ttl: ${RESERVATION_TTL:5m}
+    expiration-interval: ${RESERVATION_EXPIRATION_INTERVAL:5s}
+    expiration-batch-size: 100
+  idempotency:
+    ttl: ${IDEMPOTENCY_TTL:24h}
+    cleanup-interval: 1h
+  outbox:
+    poll-interval: ${OUTBOX_POLL_INTERVAL:1s}
+    batch-size: 100
+    send-timeout: 10s
+    initial-backoff: 1s
+    max-backoff: 60s
+  kafka:
+    reservation-events-topic: stocklock.reservation-events
+    order-events-topic: stocklock.order-events
+    partitions: 3
+  scheduling:
+    enabled: ${SCHEDULING_ENABLED:true}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        # Readiness = "can this instance serve reservations?" That needs PostgreSQL only.
+        # Redis is an optional cache and Kafka is decoupled by the outbox, so neither should take
+        # an instance out of the load balancer.
+        readiness:
+          include: readinessState,db
+  metrics:
+    tags:
+      application: stocklock
+      instance: ${INSTANCE_ID:local}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  pattern:
+    # Human-readable local logs still carry the ids. Set LOGGING_STRUCTURED_FORMAT_CONSOLE=logstash
+    # (as docker-compose does) for JSON logs that include every MDC entry.
+    correlation: "[cid=%X{correlationId:-} rid=%X{requestId:-}] "

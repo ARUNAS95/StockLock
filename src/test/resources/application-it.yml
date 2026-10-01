@@ -1,0 +1,15 @@
+stocklock:
+  scheduling:
+    enabled: false
+
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 1
+
+logging:
+  level:
+    org.apache.kafka: WARN
+    org.springframework.kafka: WARN
+    com.stocklock.common.error.GlobalExceptionHandler: WARN
